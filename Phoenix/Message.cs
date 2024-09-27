@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Runtime.Serialization;
 
 namespace Phoenix
 {
@@ -33,6 +34,7 @@ namespace Phoenix
         
         public readonly IJsonBox Response;
         
+        [IgnoreDataMember]
         public ReplyStatus ReplyStatus
         {
             get
