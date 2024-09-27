@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Text;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Converters;
 using Newtonsoft.Json.Linq;
@@ -54,10 +55,21 @@ namespace Phoenix
         {
             return JsonConvert.SerializeObject(element, Formatting.None, Settings);
         }
+        
+        public byte[] SerializeBin(object element)
+        {
+            return Encoding.UTF8.GetBytes(Serialize(element));
+        }
 
         public T Deserialize<T>(string json)
         {
             return JsonConvert.DeserializeObject<T>(json, Settings);
+        }
+        
+        public T DeserializeBin<T>(byte[] message)
+        {
+            var str = Encoding.UTF8.GetString(message);
+            return JsonConvert.DeserializeObject<T>(str, Settings);
         }
 
         public IJsonBox Box(object element)

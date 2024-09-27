@@ -1,6 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
-using SubscriptionTable = System.Collections.Generic.Dictionary<
+using SubscriptionTable = System.Collections.Concurrent.ConcurrentDictionary<
     string, System.Collections.Generic.List<Phoenix.ChannelSubscription>>;
 
 namespace Phoenix
@@ -235,7 +235,7 @@ namespace Phoenix
 
         public bool Off(string anyEvent)
         {
-            return _bindings.Remove(anyEvent);
+            return _bindings.TryRemove(anyEvent, out _);
         }
 
         internal bool CanPush()
@@ -406,7 +406,7 @@ namespace Phoenix
         }
 
 
-        private void SocketOnError(string message)
+        private void SocketOnError(string message, Exception exception)
         {
             _rejoinTimer?.Reset();
         }

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 
 namespace Phoenix
 {
@@ -8,7 +9,7 @@ namespace Phoenix
     {
         public delegate void OnClosedDelegate(ushort code, string message);
 
-        public delegate void OnErrorDelegate(string message);
+        public delegate void OnErrorDelegate(string message, Exception exception);
 
         public delegate void OnMessageDelegate(Message message);
 
@@ -19,7 +20,7 @@ namespace Phoenix
         /**
          * In PhoenixJS, listening to socket events is done by passing a callback and
          * holding the returned reference string in order to unsubscribe later.
-         * 
+         *
          * In C#, delegates are much more convenient and fit the paradigm better. Hence,
          * we simple use delegate +=, -= to subscribe and unsubscribe.
          */
@@ -42,8 +43,25 @@ namespace Phoenix
 
         private IDelayedExecution _heartbeatTimer;
         private string _pendingHeartbeatRef;
-        private uint _ref;
 
+        private int _ref;
+
+        private uint IncrementRef()
+        {
+            int newValue, original;
+            do
+            {
+                original = Interlocked.CompareExchange(ref _ref, 0, 0); // Atomically read the value
+                newValue = unchecked(original + 1); // Increment, allowing overflow
+                if (newValue < 0) // Handle overflow (when it wraps around)
+                {
+                    newValue = 0; // Reset to 0 on overflow
+                }
+            } while (Interlocked.CompareExchange(ref _ref, newValue, original) != original); // Atomically update the value
+
+            return unchecked((uint)newValue); // Cast back to uint before returning
+        }
+        
         public OnClosedDelegate OnClose;
 
         public OnErrorDelegate OnError;
@@ -67,7 +85,7 @@ namespace Phoenix
             if (Opts.ReconnectAfter != null)
             {
                 _reconnectTimer = new Scheduler(
-                    () => Teardown(Connect),
+                    () => Teardown(() => Connect(Opts.UseBinaryMode)),
                     Opts.ReconnectAfter,
                     Opts.DelayedExecutor
                 );
@@ -109,7 +127,7 @@ namespace Phoenix
             Teardown(callback, code, reason);
         }
 
-        public void Connect()
+        public void Connect(bool useBinaryMode = false)
         {
             // connectClock++;
             if (Conn != null)
@@ -122,10 +140,12 @@ namespace Phoenix
             var config = new WebsocketConfiguration
             {
                 uri = EndPointUrl(),
+                binaryMode = useBinaryMode,
                 onOpenCallback = OnConnOpen,
                 onCloseCallback = OnConnClose,
                 onErrorCallback = OnConnError,
-                onMessageCallback = OnConnMessage
+                onMessageCallback = OnConnMessage,
+                onBinaryCallback = OnBinaryConnMessage
             };
 
             Conn = _websocketFactory.Build(config);
@@ -281,14 +301,14 @@ namespace Phoenix
             OnClose?.Invoke(code, reason);
         }
 
-        private void OnConnError(IWebsocket websocket, string error)
+        private void OnConnError(IWebsocket websocket, Exception exception)
         {
             if (HasLogger())
             {
-                Log(LogLevel.Debug, "transport", $"Error {error}");
+                Log(LogLevel.Debug, "transport", $"Error {exception.Message},\n{exception.StackTrace}");
             }
 
-            OnError?.Invoke(error);
+            OnError?.Invoke(exception.Message, exception);
 
             TriggerChanError();
         }
@@ -313,7 +333,12 @@ namespace Phoenix
         {
             // PhoenixJS: see the note above regarding stateChangeCallbacks
             // this.off(channel.stateChangeRefs)
-            _channels.Remove(channel);
+            if (_channels == null || _channels.Count == 0)
+                return;
+
+            // Prevent exception
+            if (_channels.Contains(channel))
+                _channels.Remove(channel);
         }
 
         // private void Off(List<string> refs)
@@ -347,10 +372,32 @@ namespace Phoenix
             }
         }
 
+        internal void PushBinary(Message message)
+        {
+            if (HasLogger()) // let {topic, event, payload, ref, join_ref} = data
+            {
+                Log(LogLevel.Debug, "push", $"Pushing {message}");
+            }
+
+            void EncodeThenSend()
+            {
+                Conn.Send(Opts.MessageSerializer.SerializeBin(message));
+            }
+
+            if (IsConnected())
+            {
+                EncodeThenSend();
+            }
+            else
+            {
+                SendBuffer.Add(EncodeThenSend);
+            }
+        }
+
         internal string MakeRef()
         {
             // overflows are fine in C#, they just wrap
-            return (++_ref).ToString();
+            return IncrementRef().ToString();
         }
 
         private void SendHeartbeat()
@@ -362,11 +409,16 @@ namespace Phoenix
             }
 
             _pendingHeartbeatRef = MakeRef();
-            Push(new Message(
+            var msg = new Message(
                 "phoenix",
                 "heartbeat",
                 @ref: _pendingHeartbeatRef
-            ));
+            );
+            
+            if (Opts.UseBinaryMode)
+                PushBinary(msg);
+            else
+                Push(msg);
 
             _heartbeatTimer = Opts.DelayedExecutor.Execute(
                 HeartbeatTimeout,
@@ -392,6 +444,35 @@ namespace Phoenix
 
             SendBuffer.ForEach(callback => callback());
             SendBuffer.Clear();
+        }
+
+        private void OnBinaryConnMessage(IWebsocket websocket, byte[] rawMessage)
+        {
+            var message = Opts.MessageSerializer.DeserializeBin<Message>(rawMessage);
+
+            if (message.Ref != null && message.Ref == _pendingHeartbeatRef && Opts.HeartbeatInterval.HasValue)
+            {
+                _heartbeatTimer?.Cancel();
+                _pendingHeartbeatRef = null;
+                Opts.DelayedExecutor.Execute(SendHeartbeat, Opts.HeartbeatInterval.Value);
+            }
+
+            if (HasLogger())
+            {
+                Log(LogLevel.Debug, "receive", $"Received {message}");
+            }
+
+            // copy channels before triggering callbacks, since they might modify the channels list
+            _channels.ToList().ForEach(channel =>
+            {
+                // violates tell don't ask, but that's how Phoenix JS is implemented
+                if (channel.IsMember(message))
+                {
+                    channel.Trigger(message);
+                }
+            });
+
+            OnMessage?.Invoke(message);
         }
 
         private void OnConnMessage(IWebsocket websocket, string rawMessage)
@@ -483,6 +564,8 @@ namespace Phoenix
 
             // The serializer's protocol version to send on connect.
             public string Vsn = "2.0.0";
+
+            public bool UseBinaryMode;
 
             // required parameters
             public Options(IMessageSerializer messageSerializer)
