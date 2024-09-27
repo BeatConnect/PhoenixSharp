@@ -41,6 +41,11 @@ namespace PhoenixTests.WebSocketImpl
         {
             _ws.Send(message);
         }
+        
+        public void Send(byte[] message)
+        {
+            _ws.Send(message);
+        }
 
         public void Close(ushort? code = null, string message = null)
         {
@@ -60,7 +65,7 @@ namespace PhoenixTests.WebSocketImpl
 
         private void OnWebsocketError(object sender, ErrorEventArgs args)
         {
-            _config.onErrorCallback(this, args.Message);
+            _config.onErrorCallback(this, args.Exception);
         }
 
         private void OnWebsocketMessage(object sender, MessageEventArgs args)

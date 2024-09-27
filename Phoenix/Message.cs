@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Runtime.Serialization;
 
 namespace Phoenix
 {
@@ -10,8 +9,13 @@ namespace Phoenix
 
     public interface IMessageSerializer
     {
+
+        byte[] SerializeBin(object element);
         string Serialize(object element);
+        
         T Deserialize<T>(string message);
+        
+        T DeserializeBin<T>(byte[] message);
 
         IJsonBox Box(object element);
     }
@@ -19,15 +23,16 @@ namespace Phoenix
     /**
      * A reply payload, in response to a push.
      */
+    
     public readonly struct Reply
     {
         // PhoenixJS maps incoming phx_reply to chan_reply_{ref} when broadcasting the event
         public const string ReplyEventPrefix = "chan_reply_";
-
+        
         public readonly string Status;
+        
         public readonly IJsonBox Response;
-
-        [IgnoreDataMember]
+        
         public ReplyStatus ReplyStatus
         {
             get
@@ -46,7 +51,7 @@ namespace Phoenix
                 };
             }
         }
-
+        
         public Reply(string status, IJsonBox response)
         {
             Status = status;
@@ -59,11 +64,10 @@ namespace Phoenix
         Ok,
         Error,
         Timeout
-
+        
         // extension methods also implemented below
     }
-
-
+    
     public struct Message
     {
         public enum InBoundEvent
@@ -82,16 +86,18 @@ namespace Phoenix
 
             // extension methods defined below
         }
-
-
+        
         public readonly string Topic;
 
         // unfortunate mutation of the original message
         public string Event;
-        public readonly string Ref;
+        
         public IJsonBox Payload;
+        
+        public readonly string Ref;
+        
         public string JoinRef;
-
+        
         public Message(
             string topic = null,
             string @event = null,
