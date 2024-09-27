@@ -409,11 +409,16 @@ namespace Phoenix
             }
 
             _pendingHeartbeatRef = MakeRef();
-            PushBinary(new Message(
+            var msg = new Message(
                 "phoenix",
                 "heartbeat",
                 @ref: _pendingHeartbeatRef
-            ));
+            );
+            
+            if (Opts.UseBinaryMode)
+                PushBinary(msg);
+            else
+                Push(msg);
 
             _heartbeatTimer = Opts.DelayedExecutor.Execute(
                 HeartbeatTimeout,
