@@ -1,6 +1,6 @@
 using System;
 using System.Collections.Generic;
-using StatusHookTable = System.Collections.Generic.Dictionary<
+using StatusHookTable = System.Collections.Concurrent.ConcurrentDictionary<
     Phoenix.ReplyStatus, System.Collections.Generic.List<System.Action<Phoenix.Reply>>>;
 
 namespace Phoenix
@@ -45,13 +45,19 @@ namespace Phoenix
 
             StartTimeout();
             // sent = true;
-            _channel.Socket.Push(new Message(
+
+            var msg = new Message(
                 _channel.Topic,
                 _event,
                 _payload?.Invoke(),
                 Ref,
                 _channel.JoinRef
-            ));
+            );
+
+            if (_channel.Socket.Opts.UseBinaryMode)
+                _channel.Socket.PushBinary(msg);
+            else
+                _channel.Socket.Push(msg);
         }
 
         public Push Receive(ReplyStatus status, Action<Reply> callback)
@@ -61,13 +67,19 @@ namespace Phoenix
                 callback(_receivedResp.Value);
             }
 
-            if (!_recHooks.TryGetValue(status, out var callbacks))
+            // if (!_recHooks.TryGetValue(status, out var callbacks))
+            // {
+            //     callbacks = new List<Action<Reply>>();
+            //     _recHooks[status] = callbacks;
+            // }
+            //
+            // callbacks.Add(callback);
+            
+            var callbacks = _recHooks.GetOrAdd(status, _ => new List<Action<Reply>>());
+            lock (callbacks) // Ensure thread-safe modification
             {
-                callbacks = new List<Action<Reply>>();
-                _recHooks[status] = callbacks;
+                callbacks.Add(callback);
             }
-
-            callbacks.Add(callback);
 
             return this;
         }
@@ -87,8 +99,11 @@ namespace Phoenix
             {
                 return;
             }
-
-            callbacks.ForEach(callback => callback(reply.Value));
+            
+            lock (callbacks)
+            {
+                callbacks.ForEach(callback => callback(reply.Value));
+            }
         }
 
         private void CancelRefEvent()

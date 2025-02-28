@@ -1,0 +1,14 @@
+﻿{
+  "name": "com.mazyod.phoenixsharp",
+  "displayName": "PhoenixSharp",
+  "version": "1.0.0",
+  "unity": "2021.3",
+  "description": "A phoenix channel client implementation for .Net and Unity",
+  "keywords": [
+    "Phoenix",
+    "Channels",
+    "websocket"
+  ],
+  "license": "MIT",
+  "category": "Scripting"
+}

@@ -1,6 +1,7 @@
 ﻿using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
-using SubscriptionTable = System.Collections.Generic.Dictionary<
+using SubscriptionTable = System.Collections.Concurrent.ConcurrentDictionary<
     string, System.Collections.Generic.List<Phoenix.ChannelSubscription>>;
 
 namespace Phoenix
@@ -29,7 +30,7 @@ namespace Phoenix
     {
         private readonly SubscriptionTable _bindings = new SubscriptionTable();
         private readonly Push _joinPush;
-        private readonly List<Push> _pushBuffer = new List<Push>();
+        private readonly ConcurrentQueue<Push> _pushBuffer = new ConcurrentQueue<Push>();
 
         /**
          * See the stateChangeRefs comment in Socket.cs
@@ -81,8 +82,10 @@ namespace Phoenix
             {
                 State = ChannelState.Joined;
                 _rejoinTimer?.Reset();
-                _pushBuffer.ForEach(push => push.Send());
-                _pushBuffer.Clear();
+                while (_pushBuffer.TryDequeue(out var push))
+                {
+                    push.Send();
+                }
             });
 
             _joinPush.Receive(ReplyStatus.Error, message =>
@@ -235,7 +238,7 @@ namespace Phoenix
 
         public bool Off(string anyEvent)
         {
-            return _bindings.Remove(anyEvent);
+            return _bindings.TryRemove(anyEvent, out _);
         }
 
         internal bool CanPush()
@@ -268,7 +271,7 @@ namespace Phoenix
             else
             {
                 pushEvent.StartTimeout();
-                _pushBuffer.Add(pushEvent);
+                _pushBuffer.Enqueue(pushEvent);
             }
 
             return pushEvent;
@@ -406,7 +409,7 @@ namespace Phoenix
         }
 
 
-        private void SocketOnError(string message)
+        private void SocketOnError(string message, Exception exception)
         {
             _rejoinTimer?.Reset();
         }

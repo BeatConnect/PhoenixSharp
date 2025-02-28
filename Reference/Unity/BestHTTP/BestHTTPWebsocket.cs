@@ -16,7 +16,7 @@ namespace Phoenix {
 
             websocket.OnOpen += (_) => config.onOpenCallback(adapter);
             websocket.OnClosed += (_, code, message) => config.onCloseCallback(adapter, code, message);
-            websocket.OnError += (_, message) => config.onErrorCallback(adapter, message);
+            websocket.OnError += (_, exception) => config.onErrorCallback(adapter, exception);
             websocket.OnMessage += (_, msg) => config.onMessageCallback(adapter, msg);
 
             return adapter;
@@ -44,6 +44,8 @@ namespace Phoenix {
 
         public void Connect() => ws.Open();
         public void Send(string message) => ws.Send(message);
+        public void Send(byte[] message) => ws.Send(message);
+        
         public void Close(ushort? code = null, string message = null) {
             if (code.HasValue) {
                 ws.Close(code.Value, message);

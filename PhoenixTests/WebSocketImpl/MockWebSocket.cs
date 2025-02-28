@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Text;
 using Phoenix;
 
 namespace PhoenixTests.WebSocketImpl
@@ -34,6 +35,11 @@ namespace PhoenixTests.WebSocketImpl
         public void Send(string message)
         {
             CallSend.Add(message);
+        }
+
+        public void Send(byte[] data)
+        {
+            CallSend.Add(Encoding.UTF8.GetString(data));
         }
 
         public void Close(ushort? code = null, string message = null)

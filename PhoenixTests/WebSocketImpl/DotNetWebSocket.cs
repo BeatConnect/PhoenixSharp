@@ -51,7 +51,7 @@ namespace PhoenixTests.WebSocketImpl
             }
             catch (Exception ex)
             {
-                _config.onErrorCallback(this, ex.Message);
+                _config.onErrorCallback(this, ex);
             }
         }
 
@@ -73,7 +73,29 @@ namespace PhoenixTests.WebSocketImpl
             }
             catch (Exception e)
             {
-                _config.onErrorCallback(this, e.Message);
+                _config.onErrorCallback(this, e);
+            }
+        }
+
+        public void Send(byte[] message)
+        {
+            if (!SendMessage(message))
+            {
+                return;
+            }
+
+            if (_async)
+            {
+                return;
+            }
+
+            try
+            {
+                _receiveTask.Wait();
+            }
+            catch (Exception e)
+            {
+                _config.onErrorCallback(this, e);
             }
         }
 
@@ -95,7 +117,7 @@ namespace PhoenixTests.WebSocketImpl
             }
             catch (Exception ex)
             {
-                _config.onErrorCallback(this, ex.Message);
+                _config.onErrorCallback(this, ex);
             }
             finally
             {
@@ -140,7 +162,24 @@ namespace PhoenixTests.WebSocketImpl
                 return true;
             }
 
-            _config.onErrorCallback(this, "Could not send message because websocket is closed.");
+            _config.onErrorCallback(this, new WebSocketException("Could not send message because websocket is closed."));
+            return false;
+        }
+
+        private bool SendMessage(byte[] message)
+        {
+            if (_ws.State == WebSocketState.Open)
+            {
+                _ws.SendAsync(
+                    new ArraySegment<byte>(message),
+                    WebSocketMessageType.Binary,
+                    true,
+                    CancellationToken.None
+                );
+                return true;
+            }
+
+            _config.onErrorCallback(this, new WebSocketException("Could not send message because websocket is closed."));
             return false;
         }
     }

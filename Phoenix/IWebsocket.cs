@@ -13,11 +13,12 @@ namespace Phoenix
     public struct WebsocketConfiguration
     {
         public Uri uri;
-
+        public bool binaryMode;
         public Action<IWebsocket> onOpenCallback;
         public Action<IWebsocket, ushort, string> onCloseCallback;
-        public Action<IWebsocket, string> onErrorCallback;
+        public Action<IWebsocket, Exception> onErrorCallback;
         public Action<IWebsocket, string> onMessageCallback;
+        public Action<IWebsocket, byte[]> onBinaryCallback;
     }
 
     public interface IWebsocketFactory
@@ -31,6 +32,7 @@ namespace Phoenix
 
         void Connect();
         void Send(string data);
+        void Send(byte[] data);
         void Close(ushort? code = null, string reason = null);
     }
 }
